@@ -1,4 +1,4 @@
-function Convert-AsimToArm {
+function Convert-KQLToArm {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
