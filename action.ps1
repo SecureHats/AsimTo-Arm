@@ -14,7 +14,7 @@ param (
     [string]$FilesPath = '.',
 
     [Parameter(Mandatory = $true)]
-    [string]$OutputPath = '.',
+    [string]$outputFolder = '',
 
     [Parameter(Mandatory = $false)]
     [string]$returnObject = 'false'
@@ -30,9 +30,9 @@ try {
 }
 
 $hashTable = @{
-    FilesPath    = $FilesPath
-    OutputPath   = $OutputPath
-    ReturnObject = [System.Convert]::ToBoolean($ReturnObject)
+    FilesPath      = $FilesPath
+    OutputFolder   = $OutputFolder
+    ReturnObject   = [System.Convert]::ToBoolean($ReturnObject)
 }
 
 Convert-AsimToArm @hashTable
