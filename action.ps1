@@ -11,10 +11,10 @@
 
 param (
     [Parameter(Mandatory = $true)]
-    [string]$FilesPath = '.',
+    [System.IO.FileInfo]$FilesPath = '.',
 
     [Parameter(Mandatory = $true)]
-    [string]$outputFolder = '',
+    [System.IO.FileInfo]$outputFolder = '',
 
     [Parameter(Mandatory = $false)]
     [string]$returnObject = 'false'
