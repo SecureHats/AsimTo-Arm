@@ -1,12 +1,12 @@
 <#
-    Title:          AsimTo-ARM Converter
+    Title:          KQLFunction to ARM Converter
     Language:       PowerShell
     Version:        1.0
     Author:         Rogier Dijkman
     Last Modified:  21/08/2023
 
     DESCRIPTION
-    This GitHub action is used to convert ASIM parser files to deployable ARM templates.
+    This GitHub action is used to convert a KQL Function Query file to a deployable ARM templates.
 #>
 
 param (
@@ -35,4 +35,4 @@ $hashTable = @{
     ReturnObject   = [System.Convert]::ToBoolean($ReturnObject)
 }
 
-Convert-AsimToArm @hashTable
+Convert-KQLToArm @hashTable
