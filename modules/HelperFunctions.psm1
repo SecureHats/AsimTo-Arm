@@ -120,11 +120,11 @@ function Convert-AsimToArm {
                 $outputFile = $expPath + "/" + $($file.BaseName) + ".json"
             }
             else {
-
                 $outputFile = $($file.DirectoryName) + "/" + $($file.BaseName) + ".json"
             }
 
             if ($returnObject) {
+                Write-Output ($template | ConvertTo-Json -Depth 20)
                 return $template
             } else {
                 $template | ConvertTo-Json -Depth 20 | Out-File $outputFile -ErrorAction Stop
