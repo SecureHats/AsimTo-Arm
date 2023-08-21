@@ -5,11 +5,11 @@
 [![Good First Issues](https://img.shields.io/github/issues/securehats/toolbox/good%20first%20issue?color=important&label=good%20first%20issue&style=flat)](https://github.com/securehats/toolbox/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 [![Needs Feedback](https://img.shields.io/github/issues/securehats/toolbox/needs%20feedback?color=blue&label=needs%20feedback%20&style=flat)](https://github.com/securehats/toolbox/issues?q=is%3Aopen+is%3Aissue+label%3A%22needs+feedback%22)
 
-# Microsoft Sentinel - YamlTo-ARM
+# Microsoft Sentinel - KQLFunction-ARM
 
 This GitHub action can be used to convert Microsoft Sentinel yaml files to deployable ARM templates.  
 
-### Example 1 (return a single arm template deployment.json)
+### Example 1
 
 > Add the following code block to your Github workflow:
 
@@ -28,33 +28,7 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v3
       - name: SecureHats template
-        uses: SecureHats/Asim-ToArm@v0.0.1
-        with:
-          filesPath: ./samples
-          outputFolder: ./output
-          singleFile: true
-```
-
-### Example 2 (return multiple arm templates)
-
-> Add the following code block to your Github workflow:
-
-```yaml
-name: template
-on:
-  push:
-    paths:
-      - samples/**
-
-jobs:
-  template:
-    name: Asim-ToARM
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v3
-      - name: SecureHats template
-        uses: SecureHats/Asim-ToArm@v0.0.1
+        uses: SecureHats/KQL-ToArm@v0.0.1
         with:
           filesPath: ./samples
           outputFolder: ./output
