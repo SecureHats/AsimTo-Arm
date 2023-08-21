@@ -1,0 +1,18 @@
+name: template
+on:
+  push:
+    paths:
+      - samples/**
+
+jobs:
+  template:
+    name: Asim-ToARM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: SecureHats template
+        uses: SecureHats/Asim-ToArm@v0.0.1
+        with:
+          filesPath: ./samples
+          outputFolder: ./output
