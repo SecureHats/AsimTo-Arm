@@ -1,0 +1,167 @@
+// Title:           Barracuda CloudGen Parser
+// Author:          Rogier Dijkman
+// Version:         1.1
+// Last Updated:    11/17/2022 
+//  
+// DESCRIPTION:
+// This parser takes raw Barracuda CloudGen logs from a Syslog stream and parses the logs into a normalized schema.
+//
+// USAGE:
+// 1. Open Log Analytics/Azure Sentinel Logs blade. Copy the query below and paste into the Logs query window. 
+// 2. In the query window, on the second line of the query, enter the hostname(s) of your Barracuda CloudGen device(s) and any other unique identifiers for the logstream. 
+//    For example: | where Computer in ("server1", "server2")
+// 3. Click the Save button above the query. A pane will appear on the right, select "as Function" from the drop down. Enter a Function Name.
+//    It is recommended to name the Function Alias, as vimNetworkSessionBarracudaCGF
+// 4. Kusto Functions can typically take up to 15 minutes to activate. You can then use Function Alias for other queries.
+// 5. The vimNetworkSessionBarracudaCGF parser can take parameters to optimize performance and filter the results.
+//
+
+let SeverityLookup = datatable(var_LogSeverity:string, EventSeverity:string)
+[ "low", "Low"
+ ,"medium", "Medium"
+ ,"high", "High"
+ ,"", "Informational"];
+
+let ActionLookup = datatable(var_action:string, DvcAction:string) [
+    "Allow", "Allow"
+    , "Detect", "Allow"
+    , "LocalBlock", "Deny"
+    , "Block", "Deny"
+];
+
+let var_vendor        = 'Barracuda';
+let var_schemaVersion = '0.2.4';
+let var_schemaType    = 'NetworkSession';
+
+let parser = (
+    starttime:datetime                = datetime(null), 
+    endtime:datetime                  = datetime(null), 
+    srcipaddr_has_any_prefix:dynamic  = dynamic([]), 
+    dstipaddr_has_any_prefix:dynamic  = dynamic([]), 
+    ipaddr_has_any_prefix:dynamic     = dynamic([]), 
+    dstportnumber:int                 = int(null), 
+    hostname_has_any:dynamic          = dynamic([]), 
+    dvcaction:dynamic                 = dynamic([]), 
+    eventresult:string                = '*', 
+    disabled:bool                     = false
+)
+{
+  let src_or_any=set_union(srcipaddr_has_any_prefix, ipaddr_has_any_prefix); 
+  let dst_or_any=set_union(dstipaddr_has_any_prefix, ipaddr_has_any_prefix);
+  Syslog
+    | where (isnull(starttime) or TimeGenerated >= starttime)
+        and  (isnull(endtime) or TimeGenerated <= endtime)
+    | where not(disabled)
+    | where ProcessName == "box_Firewall_Activity"
+    | extend var_action = extract("(\\w+): .*", 1, SyslogMessage)
+    | extend var_unpacked = split (extract("[^:]+: (.*)", 1, SyslogMessage), "|")
+    | lookup ActionLookup on var_action
+    // Mandatory Fields Asim Parsers
+    | extend
+        EventCount         = int(1)
+        , EventStartTime     = TimeGenerated
+        , EventEndTime       = TimeGenerated
+        , EventType          = 'NetworkSession'
+        , EventResult        = iff (DvcAction == 'Allow', 'Success', 'Failure')
+        , EventProduct       = 'CloudGen Firewall'
+        , EventVendor        = 'Barracuda'
+        , EventSchema        = 'NetworkSession'
+        , EventSchemaVersion = '0.2.4'
+        , EventSeverity      = 'Low'
+        , Dvc                = Computer
+    // Mandatory fields NetworkSession
+    | invoke _ASIM_ResolveFQDN ('Computer')
+    | extend 
+        Dst = tostring(var_unpacked.[6])
+        , Src = tostring(var_unpacked.[3])
+    // Recommended fields NetworkSession
+    | extend
+        EventResultDetails = tostring(var_unpacked.[10])
+        , SrcHostname        = tostring(var_unpacked.[3])
+        , DstHostname        = tostring(Computer)
+        , Hostname           = tostring(Computer)
+        , SrcIpAddr          = tostring(var_unpacked.[3])
+        , IpAddr             = tostring(var_unpacked.[3])
+        , DstIpAddr          = tostring(var_unpacked.[6])
+        , SrcPortNumber      = toint(var_unpacked.[4])
+        , DstPortNumber      = toint(var_unpacked.[7])
+        , SrcBytes           = tolong(var_unpacked.[17])
+        , DstBytes           = tolong(var_unpacked.[16])
+    // Optional fields NetworkSession
+    | extend
+        NetworkProtocol            = tostring(var_unpacked.[1])
+        , NetworkApplicationProtocol = tostring(var_unpacked.[8])
+        , DstInterfaceName           = tostring(var_unpacked.[9])
+        , SrcInterfaceName           = tostring(var_unpacked.[2])
+        , SrcUserName                = tostring(var_unpacked.[20])
+        , DstAppName                 = tostring(var_unpacked.[22])
+        , SrcPackets                 = tolong(var_unpacked.[19])
+        , DstPackets                 = tolong(var_unpacked.[18])
+        , NetworkDuration            = toint(var_unpacked.[14])
+        , Duration                   = toint(var_unpacked.[14])
+    | where (array_length(hostname_has_any) == 0)
+        and (isnull(dstportnumber) or dstportnumber == DstPortNumber) 
+    | extend 
+        temp_SrcMatch=has_any_ipv4_prefix(SrcIpAddr, src_or_any), temp_DstMatch=has_any_ipv4_prefix(DstIpAddr, dst_or_any)
+    | extend 
+        ASimMatchingIpAddr=case(
+            array_length(src_or_any) == 0 and array_length(dst_or_any) == 0 ,"-",
+            temp_SrcMatch and temp_DstMatch, "Both",
+            temp_SrcMatch, "SrcIpAddr",
+            temp_DstMatch, "DstIpAddr",
+            "No match"
+        )
+    | where ASimMatchingIpAddr != "No match"
+    | lookup ActionLookup on DvcAction 
+    | where array_length(dvcaction) == 0 or DvcAction in (dvcaction)
+    | extend 
+        EventResult = iff (DvcAction == "Allow", "Success", "Failure") 
+    | where (eventresult=='*' or EventResult == eventresult) 
+    // Create key-value pair of original fields
+    // Preserve Original fields
+    | extend AdditionalFields = pack(
+        'Action',         var_action
+        , 'type',           var_unpacked.[0]
+        , 'proto',          var_unpacked.[1]
+        , 'srcIF',          var_unpacked.[2]
+        , 'srcIP',          var_unpacked.[3]
+        , 'srcPort',        var_unpacked.[4]
+        , 'srcMAC',         var_unpacked.[5]
+        , 'dstIP',          var_unpacked.[6]
+        , 'dstPort',        var_unpacked.[7]
+        , 'dstService',     var_unpacked.[8]
+        , 'dstIF',          var_unpacked.[9]
+        , 'rule',           var_unpacked.[10]
+        , 'Info',           var_unpacked.[11]
+        , 'srcNAT',         var_unpacked.[12]
+        , 'dstNAT',         var_unpacked.[13]
+        , 'duration',       var_unpacked.[14]
+        , 'count',          var_unpacked.[15]
+        , 'receivedBytes',  var_unpacked.[16]
+        , 'sentBytes',      var_unpacked.[17]
+        , 'receivedPackets',var_unpacked.[18]
+        , 'sentPackets',    var_unpacked.[19]
+        , 'user',           var_unpacked.[20]
+        , 'protocol',       var_unpacked.[21]
+        , 'application',    var_unpacked.[22]
+        , 'target',         var_unpacked.[23]
+        , 'content',        var_unpacked.[24]
+        , 'urlcat',         var_unpacked.[25]
+    )
+    | project-away
+        var_*
+        , SyslogMessage
+};
+
+parser (
+    starttime                 = starttime, 
+    endtime                   = endtime, 
+    srcipaddr_has_any_prefix  = srcipaddr_has_any_prefix, 
+    dstipaddr_has_any_prefix  = dstipaddr_has_any_prefix, 
+    ipaddr_has_any_prefix     = ipaddr_has_any_prefix, 
+    dstportnumber             = dstportnumber, 
+    hostname_has_any          = hostname_has_any, 
+    dvcaction                 = dvcaction,
+    eventresult               = eventresult,
+    disabled                  = disabled
+)
