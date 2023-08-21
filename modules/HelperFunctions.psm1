@@ -1,185 +1,134 @@
-Function Set-LogAnalyticsData {
+function Convert-YamlToArm {
+    [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
-        [string]$workspaceId,
+        [System.IO.FileInfo]$FilesPath,
 
         [Parameter(Mandatory = $true)]
-        [securestring]$workspaceKey,
+        [System.IO.FileInfo]$OutputFolder,
 
-        [Parameter(Mandatory = $true)]
-        [array]$body,
-
-        [Parameter(Mandatory = $true)]
-        [string]$logType,
-
-        [Parameter(Mandatory = $true)]
-        [string]$timestamp
+        [Parameter(Mandatory = $false)]
+        [switch]$ReturnObject  
     )
-
-    $properties = @{
-        "WorkspaceId"   = $workspaceId
-        "WorkspaceKey"  = $workspaceKey
-        "contentLength" = $body.Length
-        "timestamp"     = $timestamp
-    }
-
-    $payload = @{
-        "Headers"     = @{
-            "Authorization" = Build-Signature @properties
-            "Log-Type"      = $logType
-            "x-ms-date"     = $timestamp
+    
+    if ($OutputFolder) {
+        if (Test-Path $OutputFolder) {
+            $expPath = (Get-Item $OutputFolder).FullName
         }
-        "method"      = "POST"
-        "contentType" = "application/json"
-        "uri"         = "https://{0}.ods.opinsights.azure.com/api/logs?api-version=2016-04-01" -f $workspaceId
-        "body"        = $body
+        else {
+            try {
+                $script:expPath = (New-Item -Path $OutputFolder -ItemType Directory -Force).FullName
+            }
+            catch {
+                Write-Error $file.Exception.Message
+                break
+            }
+        }
     }
-
-    $response = Invoke-WebRequest @payload -UseBasicParsing
-
-    if (-not($response.StatusCode -eq 200)) {
-        Write-Warning "Unable to send data to Data Log Collector table"
+    
+    #Region Fetching Parser Files
+    try {
+        $content = Get-ChildItem -Path $Path -Include "*.csl", "*.kql" -Recurse
+    } catch {
+        Write-Error $_.Exception.Message
         break
     }
-    else {
-        Write-Output "Uploaded to Data Log Collector table [$($logType + '_CL')] at [$timestamp]"
-    }
-}
+    #EndRegion Fetching Parser Files
 
-Function Build-Signature {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$workspaceId,
+    #Region Processing Parser Files
+    if ($content) {
+        Write-Output "'$($content.count)' parsers found to convert"
 
-        [Parameter(Mandatory = $true)]
-        [securestring]$workspaceKey,
-
-        [Parameter(Mandatory = $true)]
-        [int32]$contentLength,
-
-        [Parameter(Mandatory = $true)]
-        [string]$timestamp
-    )
-
-        $xHeaders       = "x-ms-date:" + $timestamp
-        $stringToHash   = "POST" + "`n" + $contentLength + "`n" + "application/json" + "`n" + $xHeaders + "`n" + "/api/logs"
-        $bytesToHash    = [Text.Encoding]::UTF8.GetBytes($stringToHash)
-        $keyBytes       = [Convert]::FromBase64String((ConvertFrom-SecureString -SecureString $workspaceKey -AsPlainText))
-        $sha256         = New-Object System.Security.Cryptography.HMACSHA256
-        $sha256.Key     = $keyBytes
-        $calculatedHash = $sha256.ComputeHash($bytesToHash)
-        $encodedHash    = [Convert]::ToBase64String($calculatedHash)
-        $authorization  = 'SharedKey {0}:{1}' -f $workspaceId, $encodedHash
-
-    return $authorization
-}
-
-Function Get-Workspace {
-    param (
-        [Parameter(Mandatory = $false)]
-        [string]$workspaceName
-    )
-
-    if (-not([string]::IsNullOrEmpty($workspaceName))) {
-        try {
-            $workspaceObject = @{
-                workspaceId  = ''
-                workspaceKey = ''
-            }
-
-            Write-Verbose "Connecting to workspace"
-            $workspace = Get-AzResource `
-                -Name "$workspaceName" `
-                -ResourceType 'Microsoft.OperationalInsights/workspaces'
-
-            $ResourceGroupName = $workspace.ResourceGroupName
-            $workspaceName = $workspace.Name
-
-            $workspaceObject.workspaceId = (Get-AzOperationalInsightsWorkspace -ResourceGroupName $resourceGroupName -Name $workspaceName).CustomerId.Guid
-
-            Write-Host "Workspace Name: $($workspaceName)"
-            Write-Host "Workspace Id: $(workspaceObject.$workspaceId)"
-
-            if ($null -ne $workspace) {
-                try {
-                    Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
-
-                    $workspaceObject.workspaceKey = `
-                    (Get-AzOperationalInsightsWorkspaceSharedKeys `
-                            -ResourceGroupName $resourceGroupName `
-                            -Name $workspaceName).PrimarySharedKey `
-                    | ConvertTo-SecureString -AsPlainText -Force
+        # Start Loop
+        Foreach ($file in $content) {
+            $query = $(Get-Content -Raw $file.FullName)
+            
+            $template = [PSCustomObject]@{
+                '$schema'      = "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#"
+                contentVersion = "1.0.0.0"
+                parameters     = @{
+                    Workspace = @{
+                        type = "string"
+                    }
                 }
-                catch {
-                    Write-Warning -Message "Log Analytics workspace key for [$($workspaceName)] not found."
-                    break
+                resources      = @(
+                    [PSCustomObject]@{
+                        name       = "[parameters('Workspace')]"
+                        type       = "Microsoft.OperationalInsights/workspaces"
+                        apiVersion = "2017-03-15-preview"
+                        location   = "[resourcegroup().location]"
+                        resources  = @([PSCustomObject]@{
+                                type       = "savedSearches"
+                                apiVersion = "2020-08-01"
+                                name       = $($file.BaseName)
+                                properties = [PSCustomObject]@{
+                                    etag               = "*"
+                                    displayName        = $($file.BaseName)
+                                    category           = "ASIM"
+                                    FunctionAlias      = $($file.BaseName)
+                                    functionParameters = $($functionParameters)
+                                    query              = "$query"
+                                    version            = 1
+                                }
+                                dependsOn  = @("[resourceId('Microsoft.OperationalInsights/workspaces', parameters('Workspace'))]")
+                            }
+                        )
+                    }
+                )
+            }
+
+            $schemas = @('NetworkSession', 'WebSession', 'Authentication', 'AuditEvent', 'Dns', 'FileEvent', 'ProcessEvent')
+            foreach ($schema in $schemas) {
+                if ($query | Select-String $schema) {
+                    $schemaType = $schema
+                    switch ($schemaType) {
+                        "NetworkSession" {
+                            Write-Host "$schemaType" -ForegroundColor Blue
+                            $functionParameters = "starttime:datetime=datetime(null), endtime:datetime=datetime(null), srcipaddr_has_any_prefix:dynamic=dynamic([]), dstipaddr_has_any_prefix:dynamic=dynamic([]), ipaddr_has_any_prefix:dynamic=dynamic([]), dstportnumber:int=int(null), hostname_has_any:dynamic=dynamic([]), dvcaction:dynamic=dynamic([]), eventresult:string='*', disabled:bool=False, pack:bool=False"
+                         }
+                         "WebSession" {
+                            $functionParameters = "starttime:datetime=datetime(null), endtime:datetime=datetime(null), srcipaddr_has_any_prefix:dynamic=dynamic([]), ipaddr_has_any_prefix:dynamic=dynamic([]), url_has_any:dynamic=dynamic([]), httpuseragent_has_any:dynamic=dynamic([]), eventresultdetails_in:dynamic=dynamic([]), eventresult:string='*', disabled:bool=False,pack:bool=False"
+                         }
+                         "Authentication" {
+                            $functionParameters = "starttime:datetime=datetime(null), endtime:datetime=datetime(null), targetusername_has:string='*', disabled:bool=False"
+                         }
+                         "AuditEvent" {
+                            $functionParameters = "starttime:datetime=datetime(null), endtime:datetime=datetime(null), srcipaddr_has_any_prefix:dynamic=dynamic([]), actorusername_has_any:dynamic=dynamic([]), operation_has_any:dynamic=dynamic([]), eventtype_in:dynamic=dynamic([]), eventresult:string='*', object_has_any:dynamic=dynamic([]), newvalue_has_any:dynamic=dynamic([]), disabled:bool=False"
+                         }
+                         "Dns" {
+                            $functionParameters = "starttime:datetime=datetime(null), endtime:datetime=datetime(null), srcipaddr:string='*', domain_has_any:dynamic=dynamic([]), responsecodename:string='*', response_has_ipv4:string='*', response_has_any_prefix:dynamic=dynamic([]), eventtype:string='Query', disabled:bool=False"
+                         }
+                         "FileEvent" {
+                            $functionParameters = "disabled:bool=False"
+                         }
+                         "ProcessEvent" {
+                            $functionParameters = "starttime:datetime=datetime(null), endtime:datetime=datetime(null), commandline_has_any:dynamic=dynamic([]), commandline_has_all:dynamic=dynamic([]), commandline_has_any_ip_prefix:dynamic=dynamic([]), actingprocess_has_any:dynamic=dynamic([]), targetprocess_has_any:dynamic=dynamic([]), parentprocess_has_any:dynamic=dynamic([]), targetusername_has:string='*', dvcipaddr_has_any_prefix:dynamic=dynamic([]), dvchostname_has_any:dynamic=dynamic([]), eventtype:string='*', hashes_has_any:dynamic=dynamic([]), disabled:bool=False"
+                         }
+                        Default {}
+                    }
                 }
             }
-            return $workspaceObject
-        }
-        catch {
-            Write-Warning -Message "Log Analytics workspace [$($workspaceName)] not found in the current context"
-            break
-        }
-    }
-}
 
-function Send-CustomLogs {
-    param (
-        [Parameter(Mandatory = $true)]
-        [String]$workspaceId,
+            if ($($file.BaseName) -like "vim*" ) {
+                Write-Output "VIM Parameter: $functionParameters"
+                $template.resources[0].resources[0].properties.functionParameters = $functionParameters
+            } else {
+                $template.resources[0].resources[0].properties.functionParameters = "disabled:bool=False"
+            }
+            #Based of output path variable export files to the right folder
+            if ($null -ne $expPath) {
+                $outputFile = $expPath + "/" + $($file.BaseName) + ".json"
+            }
+            else {
 
-        [Parameter(Mandatory = $true)]
-        [SecureString]$workspaceKey,
+                $outputFile = $($file.DirectoryName) + "/" + $($file.BaseName) + ".json"
+            }
 
-        [Parameter(Mandatory = $true)]
-        [string]$tableName,
-
-        [Parameter(Mandatory = $true)]
-        [array]$dataInput
-    )
-
-    $postObject = @{
-        "workspaceId"  = $workspaceId
-        "WorkspaceKey" = $workspaceKey
-        "logType"      = $tableName
-        "body"         = ''
-        "timestamp"    = ''
-    }
-
-    $tempdata = @()
-    $tempDataSize = 0
-
-    if ((($dataInput | ConvertTo-Json -depth 20).Length) -gt 25MB) {
-        foreach ($record in $dataInput) {
-            $tempdata += $record
-            $tempDataSize += ($record | ConvertTo-Json -depth 20).Length
-            if ($tempDataSize -gt 25MB) {
-                $postObject.body = ([System.Text.Encoding]::UTF8.GetBytes(($tempdata | ConvertTo-Json)))
-                $postObject.timestamp = [DateTime]::UtcNow.ToString("r")
-
-                Write-Host "Sending block data = $TempDataSize"
-                Set-LogAnalyticsData @postObject
-
-                $tempdata = $null
-                $tempdata = @()
-                $tempDataSize = 0
+            if ($returnObject) {
+                return $template
+            } else {
+                $template | ConvertTo-Json -Depth 20 | Out-File $outputFile -ErrorAction Stop
             }
         }
-        $postObject.body = ([System.Text.Encoding]::UTF8.GetBytes(($tempdata | ConvertTo-Json -depth 20)))
-        $postObject.timestamp = [DateTime]::UtcNow.ToString("r")
-
-        Write-Host "Sending left over data = $Tempdatasize"
-        Set-LogAnalyticsData @postObject
-
-        $tempdata = $null
-        $tempdata = @()
-        $tempDataSize = 0
-    } else {
-        $postObject.body = ([System.Text.Encoding]::UTF8.GetBytes(($dataInput | ConvertTo-Json -depth 20)))
-        $postObject.timestamp = [DateTime]::UtcNow.ToString("r")
     }
-
-    Write-Host "Sending data to [$($tableName + '_CL')]"
-    Set-LogAnalyticsData @postObject
-}
+#EndRegion HelperFunctions
