@@ -1,4 +1,4 @@
-function Convert-YamlToArm {
+function Convert-AsimToArm {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
@@ -131,4 +131,5 @@ function Convert-YamlToArm {
             }
         }
     }
+}
 #EndRegion HelperFunctions
