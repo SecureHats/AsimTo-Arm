@@ -1,4 +1,4 @@
-name: 'template'
+name: 'ASIM-ToARM'
 description: 'Convert an ASIM parser to a deployable ARM template'
 branding:
   icon: 'check-square'
