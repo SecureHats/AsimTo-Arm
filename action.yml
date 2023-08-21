@@ -1,4 +1,4 @@
-name: 'ASIM-ToARM'
+name: 'AsimTo-ARM'
 description: 'Convert an ASIM parser to a deployable ARM template'
 branding:
   icon: 'check-square'
@@ -18,5 +18,6 @@ runs:
   steps:
     - run: ${{ github.action_path }}/action.ps1 `
               -parameter1 '${{ inputs.FilePath }}' `
-              -parameter2 '${{ inputs.OutputPath }}'
+              -parameter2 '${{ inputs.OutputPath }}' `
+              -returnObject ${{ inputs.returnObject }}
       shell: pwsh
