@@ -4,20 +4,25 @@ branding:
   icon: 'check-square'
   color: 'green'
 inputs:
-  FilePath:
+  filesPath:
     description:  'Path of the source files or folder'
     required: false
     default: ''
-  OutputPath:
+  outputPath:
     description:  'Path of the output folder'
     required: false
     default: ''
+  returnObject:
+    description:  'Output single deployment template'
+    required: false
+    default: false
+    type: boolean
 
 runs:
   using: "composite"
   steps:
     - run: ${{ github.action_path }}/action.ps1 `
-              -parameter1 '${{ inputs.FilePath }}' `
-              -parameter2 '${{ inputs.OutputPath }}' `
+              -parameter1 '${{ inputs.filesPath }}' `
+              -parameter2 '${{ inputs.outputPath }}' `
               -returnObject ${{ inputs.returnObject }}
       shell: pwsh
