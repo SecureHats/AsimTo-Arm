@@ -1,22 +1,28 @@
-name: 'template'
-description: 'description of solution shown on the marketplace'
+name: 'Asim-ToArm'
+description: 'Convert an ASIM parser to a deployable ARM template'
 branding:
   icon: 'check-square'
   color: 'green'
 inputs:
-  parameter1:
-    description:  'parameter 1 description'
+  filesPath:
+    description:  'Path of the source files or folder'
     required: false
     default: ''
-  parameter1:
-    description:  'parameter 2 description'
+  outputPath:
+    description:  'Path of the output folder'
     required: false
     default: ''
+  returnObject:
+    description:  'Output single deployment template'
+    required: false
+    default: false
+    type: boolean
 
 runs:
   using: "composite"
   steps:
     - run: ${{ github.action_path }}/action.ps1 `
-              -parameter1 '${{ inputs.parameter1 }}' `
-              -parameter2 '${{ inputs.parameter2 }}'
+              -parameter1 '${{ inputs.filesPath }}' `
+              -parameter2 '${{ inputs.outputFolder }}' `
+              -returnObject ${{ inputs.returnObject }}
       shell: pwsh
