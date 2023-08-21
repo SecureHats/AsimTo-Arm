@@ -23,6 +23,6 @@ runs:
   steps:
     - run: ${{ github.action_path }}/action.ps1 `
               -parameter1 '${{ inputs.filesPath }}' `
-              -parameter2 '${{ inputs.outputPath }}' `
+              -parameter2 '${{ inputs.outputFolder }}' `
               -returnObject ${{ inputs.returnObject }}
       shell: pwsh
