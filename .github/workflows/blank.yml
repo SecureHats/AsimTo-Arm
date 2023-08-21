@@ -12,7 +12,7 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v3
       - name: SecureHats template
-        uses: SecureHats/Asim-ToArm@v0.0.3
+        uses: SecureHats/Asim-ToArm@v0.0.4
         with:
           filesPath: ./samples
           outputFolder: ./output
