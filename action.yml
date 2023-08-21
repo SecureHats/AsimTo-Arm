@@ -22,7 +22,7 @@ runs:
   using: "composite"
   steps:
     - run: ${{ github.action_path }}/action.ps1 `
-              -parameter1 '${{ inputs.filesPath }}' `
-              -parameter2 '${{ inputs.outputFolder }}' `
+              -filesPath '${{ inputs.filesPath }}' `
+              -outputFolder '${{ inputs.outputFolder }}' `
               -returnObject ${{ inputs.returnObject }}
       shell: pwsh
