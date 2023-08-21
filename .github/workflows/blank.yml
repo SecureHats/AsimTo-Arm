@@ -16,3 +16,4 @@ jobs:
         with:
           filesPath: ./samples
           outputFolder: ./output
+          ReturnObject: true
